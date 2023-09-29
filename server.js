@@ -7,7 +7,8 @@ const db = mysql.createConnection(
     {
         host: 'localhost',
         user: process.env.DB_USER,
-        database: process.env.DB_NAME
+        database: process.env.DB_NAME,
+        password: process.env.DB_PASSWORD
     },
     console.log(`mysql2 connected to database`)
 );
@@ -73,7 +74,6 @@ function prompt() {
             }
         })
 };
-
 function addDepartment() {
     const question =
         [{
@@ -160,13 +160,37 @@ function addEmployee() {
         })
 };
 function updateEmployeeRole() {
-    db.query('SELECT first_name, last_name FROM employee', ((err, data) => {
+    db.query('SELECT id, first_name, last_name FROM employee', ((err, data) => {
         if (err) { console.error(err) }
         else {
+            // Containers to hold inquirer list choices
             const choices = [];
+            const nextChoices = [];
             for (i = 0; i < data.length; i++) {
-                choices.push(`${data[i].first_name} ${data[i].last_name}`)
-            }
+                let dataHelper = {
+                    'employee_id': 0,
+                    'first_name': '',
+                    'last_name': ''
+                }
+                dataHelper.employee_id = data[i].id;
+                dataHelper.first_name = data[i].first_name;
+                dataHelper.last_name = data[i].last_name;
+                choices.push(`${dataHelper.first_name} ${dataHelper.last_name}`)
+            };
+            db.query('SELECT id, title FROM role', ((err, data) => {
+                if (err) { console.error(err) }
+                else {
+                    for (i = 0; i < data.length; i++) {
+                        let dataHelper = {
+                            'role_id': 0,
+                            'title': ''
+                        }
+                        dataHelper.role_id = data[i].id;
+                        dataHelper.title = data[i].title;
+                        nextChoices.push(`${dataHelper.title}`)
+                    };
+                }
+            }));
             const firstQuestion =
                 [{
                     name: 'selection',
@@ -174,9 +198,30 @@ function updateEmployeeRole() {
                     type: 'list',
                     choices: choices
                 }]
+            const nextQuestion =
+                [{
+                    name: 'selection',
+                    message: 'What role should the employee have?',
+                    type: 'list',
+                    choices: nextChoices
+                }]
+
             inquirer.prompt(firstQuestion)
-                .then((answer) => {
-                    console.log(answer.selection)
+                .then((firstAnswer) => {
+                    inquirer.prompt(nextQuestion)
+                        .then((nextAnswer) => {
+                            let targetName = firstAnswer.selection.split(' ');
+                            db.query(
+                                `UPDATE employee
+                                SET role_id = (SELECT id FROM role WHERE title = ?)
+                                WHERE first_name = ? AND last_name = ?;`,
+                                [nextAnswer.selection, targetName[0], targetName[1]],
+                                (err, data) => {
+                                    if (err) { console.error(err) }
+                                    else { console.log('\n', `Role ${nextAnswer.selection} assigned to ${firstAnswer.selection}`, '\n') }
+                                    prompt();
+                                })
+                        })
                 })
         }
     }))
